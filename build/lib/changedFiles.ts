@@ -6,7 +6,7 @@
 import cp from 'child_process';
 import minimatch from 'minimatch';
 import path from 'path';
-import { lintFilter } from '../filters.ts';
+import { getLintFilter } from '../filters.ts';
 
 const root = path.dirname(path.dirname(import.meta.dirname));
 
@@ -119,8 +119,6 @@ function createGlobFilter(globs: readonly string[]): (file: string) => boolean {
 	};
 }
 
-const isLintTarget = createGlobFilter(lintFilter);
-
 function git(args: readonly string[]): string {
 	const result = cp.spawnSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 	if (result.error) {
@@ -156,12 +154,17 @@ function listTrackedFiles(folders: readonly string[]): string[] {
 	return git(['ls-files', '-z', '--', ...folders]).split('\0').filter(file => !!file);
 }
 
+/** Returns whether the file can change the lint rules or how they are run. */
+export function isLintConfigurationPath(file: string): boolean {
+	return eslintConfigFile.test(file) || matchesAny(file, lintFullCheckPaths);
+}
+
 /**
  * Returns the files oxlint needs to check for the given changes, or the full scope when a change can affect the
  * results of unchanged files.
  */
 export function getLintScope(changes: readonly IChangedFile[], listFiles: (folders: readonly string[]) => readonly string[] = listTrackedFiles): CheckScope {
-	const fullCheckChange = changes.find(change => eslintConfigFile.test(change.path) || matchesAny(change.path, lintFullCheckPaths));
+	const fullCheckChange = changes.find(change => isLintConfigurationPath(change.path));
 	if (fullCheckChange) {
 		return { kind: 'full', reason: `${fullCheckChange.path} changed` };
 	}
@@ -174,7 +177,7 @@ export function getLintScope(changes: readonly IChangedFile[], listFiles: (folde
 		reason = `changed files, plus the extensions linted with type information because ${typeAwareChange.path} changed`;
 	}
 
-	return { kind: 'files', files: Array.from(files).filter(isLintTarget).sort(), reason };
+	return { kind: 'files', files: Array.from(files).filter(createGlobFilter(getLintFilter())).sort(), reason };
 }
 
 /**

@@ -7,7 +7,16 @@ import { execFileSync, spawnSync } from 'child_process';
 import { lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import path from 'path';
 
-const hook = '#!/bin/sh\n# Installed by scripts/install-hygiene-hook.mts\nexec pnpm run precommit --staged\n';
+const legacyHook = '#!/bin/sh\n# Installed by scripts/install-hygiene-hook.mts\nexec pnpm run precommit --staged\n';
+const hook = `#!/bin/sh
+# Installed by scripts/install-hygiene-hook.mts
+# Git runs pre-commit from the root of the checkout that is committing.
+if ! grep -Fq '// Supports the installed pre-commit hook: --staged' build/hygiene.ts 2>/dev/null; then
+	printf '%s\\n' 'Skipping the VS Code hygiene hook: this checkout does not advertise staged hygiene support. Switch to a checkout with staged hygiene support to run the hook.' >&2
+	exit 0
+fi
+exec pnpm run precommit --staged
+`;
 const cwd = path.resolve(import.meta.dirname, '..');
 
 function main(): void {
@@ -34,7 +43,11 @@ function main(): void {
 	const hookPath = path.join(hookDir, 'pre-commit');
 	const existing = lstatSync(hookPath, { throwIfNoEntry: false });
 	if (existing) {
-		if (!existing.isFile() || readFileSync(hookPath, 'utf8') !== hook) {
+		const contents = existing.isFile() ? readFileSync(hookPath, 'utf8') : undefined;
+		if (contents === legacyHook && !uninstall) {
+			throw new Error('Leaving the previous repository hygiene hook unchanged. Run node scripts/install-hygiene-hook.mts --uninstall, then rerun the installer to update it.');
+		}
+		if (contents !== hook && contents !== legacyHook) {
 			throw new Error(`Leaving the existing pre-commit hook unchanged: ${hookPath}`);
 		}
 		if (uninstall) {

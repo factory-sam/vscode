@@ -259,17 +259,18 @@ export const tsFormattingFilter = Object.freeze<string[]>([
 	'!extensions/copilot/**',
 ]);
 
-export const lintFilter = Object.freeze<string[]>([
-	'**/*.{js,cjs,mjs}',
-	'**/*.{ts,tsx,mts,cts}',
-	'.eslint-plugin-local/**/*.ts',
-	'!src/vs/platform/agentHost/node/codex/protocol/generated/**',
-	...readFileSync(join(import.meta.dirname, '..', '.eslint-ignore'))
-		.toString()
-		.split(/\r\n|\n/)
-		.filter(line => line && !line.startsWith('#'))
-		.map(line => line.startsWith('!') ? line.slice(1) : `!${line}`)
-]);
+export function getLintFilter(): string[] {
+	return [
+		'**/*.{js,cjs,mjs}',
+		'**/*.{ts,tsx,mts,cts}',
+		'.eslint-plugin-local/**/*.ts',
+		'!src/vs/platform/agentHost/node/codex/protocol/generated/**',
+		...readFileSync(join(import.meta.dirname, '..', '.eslint-ignore'), 'utf8')
+			.split(/\r\n|\n/)
+			.filter(line => line && !line.startsWith('#'))
+			.map(line => line.startsWith('!') ? line.slice(1) : `!${line}`)
+	];
+}
 
 export const stylelintFilter = Object.freeze<string[]>([
 	'src/**/*.css',

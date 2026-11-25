@@ -128,9 +128,9 @@ node scripts/install-hygiene-hook.mts
 
 The installer writes only the default local `pre-commit` hook. It does not change Git configuration, replace an existing hook, or install if `core.hooksPath` is configured. Git shares the default hooks directory with linked worktrees of the same clone. If you already manage hooks, leave them in place and, if appropriate, run `pnpm run precommit --staged` from your existing hook.
 
-The hook checks staged changes, skips commits with no staged file contents, and refuses a file that also has unstaged changes rather than linting a different version. Unrelated unstaged files are not selected. Review and finish staging the listed files before retrying.
+The hook skips older checkouts and linked worktrees that do not support staged hygiene. In a supported checkout, it checks staged changes and skips commits with no staged file contents. It refuses partially staged files and unstaged changes to relevant configuration, such as lint rules and ignore files, because some checks read from the working tree. Stage the listed changes or set them aside before retrying.
 
-To remove only the unchanged hook installed by this command, run `node scripts/install-hygiene-hook.mts --uninstall`.
+To remove only the unchanged hook installed by this command, run `node scripts/install-hygiene-hook.mts --uninstall`. If you installed the earlier version without the checkout check, uninstall it and run the installer again from a supported checkout. The installer does not replace it automatically.
 
 ## Thank You
 

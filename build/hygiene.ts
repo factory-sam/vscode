@@ -12,7 +12,8 @@ import pall from 'p-all';
 import path from 'path';
 import VinylFile from 'vinyl';
 import vfs from 'vinyl-fs';
-import { all, copyrightFilter, indentationFilter, lintFilter, stylelintFilter, tsFormattingFilter, unicodeFilter } from './filters.ts';
+import { all, copyrightFilter, getLintFilter, indentationFilter, stylelintFilter, tsFormattingFilter, unicodeFilter } from './filters.ts';
+import { isLintConfigurationPath } from './lib/changedFiles.ts';
 import { Formatter } from './lib/formatter.ts';
 import { oxlint } from './oxlint.ts';
 import gulpstylelint from './stylelint.ts';
@@ -241,7 +242,7 @@ export function hygiene(some: NodeJS.ReadableStream | string[] | undefined, runO
 		const lintPaths: string[] = [];
 		streams.push(
 			result
-				.pipe(filter(Array.from(lintFilter)))
+				.pipe(filter(getLintFilter()))
 				.pipe(trackCheckedFile())
 				.pipe(through(function (file: VinylFile) {
 					lintPaths.push(file.relative.replace(/\\/g, '/'));
@@ -342,6 +343,27 @@ function createGitIndexVinyls(paths: string[]): Promise<VinylFile[]> {
 	return pall(fns, { concurrency: 4 }).then((r) => r.filter((p): p is VinylFile => !!p));
 }
 
+/** Checks whether a staged lint target uses this working-tree configuration. */
+function isStagedHygieneConfiguration(file: string, lintTargets: readonly string[]): boolean {
+	// The hygiene pipeline loads these even if no lint target passes its filters.
+	if (file === '.eslint-ignore' || file === 'build/lib/stylelint/vscode-known-variables.json') {
+		return true;
+	}
+	if (!lintTargets.length) {
+		return false;
+	}
+	if (isLintConfigurationPath(file)) {
+		return true;
+	}
+	if (file === 'tsfmt.json') {
+		return lintTargets.some(target => /\.ts$/.test(target));
+	}
+	// Oxlint discovers nested configuration and ignore files in the target's ancestors.
+	const directory = file.slice(0, file.lastIndexOf('/') + 1);
+	return /(^|\/)(?:\.oxlintrc\.jsonc?|oxlint\.config\.[cm]?[jt]s|\.eslintignore|\.gitignore|tsconfig[^/]*\.json)$/.test(file) &&
+		lintTargets.some(target => target.startsWith(directory));
+}
+
 // this allows us to run hygiene as a git pre-commit hook
 if (import.meta.main) {
 	process.on('unhandledRejection', (reason: unknown, p: Promise<any>) => {
@@ -349,6 +371,7 @@ if (import.meta.main) {
 		process.exit(1);
 	});
 
+	// Supports the installed pre-commit hook: --staged
 	const stagedOnly = process.argv.length === 3 && process.argv[2] === '--staged';
 	if (process.argv.length > 2 && !stagedOnly) {
 		hygiene(process.argv.slice(2)).on('error', (err: Error) => {
@@ -372,10 +395,10 @@ if (import.meta.main) {
 				if (some.length > 0) {
 					const checkCopilot = some.some(f => f === 'package.json' || f.startsWith('extensions/copilot/'));
 					const checkJavaScript = some.some(f => /\.(js|cjs|mjs)$/.test(f) || f === '.eslint-allowed-javascript-files');
-					const unstaged = new Set(cp.execFileSync('git', ['diff', '--name-only', '-z', '--'], { encoding: 'utf8', maxBuffer: 2000 * 1024 }).split('\0'));
+					const unstaged = new Set(cp.execFileSync('git', stagedOnly
+						? ['ls-files', '--modified', '--others', '--exclude-standard', '-z', '--']
+						: ['diff', '--name-only', '-z', '--'], { encoding: 'utf8', maxBuffer: 2000 * 1024 }).split('\0').filter(Boolean));
 					if (stagedOnly) {
-						// Oxlint and the repository-wide guards read files from disk. Do not
-						// run them on worktree versions that differ from the index.
 						const paths = new Set(some);
 						if (checkCopilot) {
 							paths.add('package.json');
@@ -387,6 +410,15 @@ if (import.meta.main) {
 						const mixed = [...paths].filter(file => unstaged.has(file));
 						if (mixed.length > 0) {
 							console.error(`Hygiene cannot check both staged and unstaged versions. Finish staging these paths or set their unstaged changes aside:\n${mixed.join('\n')}`);
+							process.exit(1);
+						}
+
+						// Check inputs before handing any paths to the formatter or linters.
+						// In particular, a changed ignore file can hide a staged lint target.
+						const lintTargets = some.filter(file => /\.[cm]?[jt]sx?$/.test(file));
+						const configuration = [...unstaged].filter(file => isStagedHygieneConfiguration(file, lintTargets));
+						if (configuration.length > 0) {
+							console.error(`Hygiene cannot use configuration that differs from the index. Stage these changes or set them aside:\n${configuration.sort().join('\n')}`);
 							process.exit(1);
 						}
 					}
