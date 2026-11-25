@@ -32,6 +32,9 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      - name: Check AGENTS.md links
+        run: timeout --kill-after=2s 10s node build/lib/checkAgentsLinks.ts
+
       - name: Run build-script smoke tests
         run: |
           timeout --kill-after=5s 60s node --test \
