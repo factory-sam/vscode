@@ -96,6 +96,42 @@ If you are interested in writing code to fix issues, please see [How to Contribu
 
 This repository installs its dependencies with [pnpm](https://pnpm.io). Install pnpm 11 or newer (for example `npm install -g pnpm`), then run `pnpm install` at the repository root. pnpm commands in the repository run with the pnpm version that the `packageManager` field of [package.json](package.json) pins: pnpm downloads that version the first time and switches to it. Installing with npm or yarn is not supported.
 
+### Local development setup
+
+Use a clone path without spaces, the Node.js version in [`.nvmrc`](.nvmrc), and the [platform prerequisites](https://github.com/microsoft/vscode/wiki/How-to-Contribute#prerequisites), including Python and a native compiler toolchain. A graphical session is needed to launch the desktop app. The [development container](.devcontainer/README.md) is an alternative to installing the native prerequisites yourself.
+
+From the repository root:
+
+1. Run `pnpm install` to install workspace dependencies and prepare native modules.
+2. Run `pnpm run compile` for a one-time build, or `pnpm run watch` while developing.
+3. Launch Code - OSS with `./scripts/code.sh` on macOS/Linux or `scripts\code.bat` on Windows. The launcher prepares Electron and built-in extensions as needed.
+4. Use the [unit test guide](test/unit/README.md) to choose the smallest relevant test command.
+
+The default install, build, and launch do not require custom environment variables or a root `.env` file. Those commands do not load a root `.env` automatically. For the optional settings below, set the variable in the shell that runs the command.
+
+| Variable | When to set it |
+| --- | --- |
+| `VSCODE_SEQUENTIAL_NATIVE_INSTALLS=1` | If parallel native builds exhaust local resources during `pnpm install`, [install the native dependency roots one at a time](build/npm/postinstall.ts). |
+| `VSCODE_SKIP_PRELAUNCH=1` | For repeated launches when the [prelaunch outputs](build/lib/preLaunch.ts) are already present and current. Leave it unset for a fresh clone or after changing prerequisites. The [Electron test launcher](scripts/test.sh) also honors it. |
+| `VSCODE_FORCE_PRELAUNCH=1` | To force the [Electron test launcher](scripts/test.sh) to rerun Electron preparation. Leave `VSCODE_SKIP_PRELAUNCH` unset when using it. |
+| `vs2026_install`, `vs2022_install`, `vs2019_install` | On Windows, set the variable for your version only if [preinstall](build/npm/preinstall.ts) cannot find Visual Studio Build Tools in a standard location. Set it to the local installation path. |
+
+Root `.env` files and variants such as `.env.local` are ignored by Git. Keep real credentials out of committed files. Placeholder-only `.env.example`, `.env.sample`, and `.env.template` files and their qualified variants can still be tracked.
+
+### Optional pre-commit hygiene check
+
+After installing dependencies, opt in from the repository root:
+
+```sh
+node scripts/install-hygiene-hook.mts
+```
+
+The installer writes only the default local `pre-commit` hook. It does not change Git configuration, replace an existing hook, or install if `core.hooksPath` is configured. Git shares the default hooks directory with linked worktrees of the same clone. If you already manage hooks, leave them in place and, if appropriate, run `pnpm run precommit --staged` from your existing hook.
+
+The hook skips older checkouts and linked worktrees that do not support staged hygiene. In a supported checkout, it checks staged changes and skips commits with no staged file contents. It refuses partially staged files and unstaged changes to relevant configuration, such as lint rules and ignore files, because some checks read from the working tree. Stage the listed changes or set them aside before retrying.
+
+To remove only the unchanged hook installed by this command, run `node scripts/install-hygiene-hook.mts --uninstall`. If you installed the earlier version without the checkout check, uninstall it and run the installer again from a supported checkout. The installer does not replace it automatically.
+
 ## Thank You
 
 Your contributions to open source, large or small, make great projects like this possible. Thank you for taking the time to contribute.
