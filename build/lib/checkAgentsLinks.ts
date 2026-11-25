@@ -38,6 +38,8 @@ for (const file of files) {
 const inline = /<!--[\s\S]*?-->|(?<comment><!--)[\s\S]*|\\[^\n]|(?<!`)(?<ticks>`+)(?!`)[\s\S]*?(?<!`)\k<ticks>(?!`)|!?\[[^[\]\n]*\]\([ \t]*(?:<(?<angle>[^<>\n]*)>|(?<bare>[^\s<>()]+))(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?[ \t]*\)/g;
 const quotePrefix = /^(?: {0,3}>[ \t]?)+/;
 const fenceMarker = /^ {0,3}(?<marker>`{3,}|~{3,})(?<rest>.*)$/;
+const setextUnderline = /^ {0,3}(?:=+|-+)[ \t]*$/;
+const thematicBreak = /^ {0,3}(?<marker>[-*_])(?:[ \t]*\k<marker>){2,}[ \t]*$/;
 let fence: { marker: string; quoteDepth: number } | undefined;
 let inComment = false;
 let paragraph: string[] = [];
@@ -104,7 +106,11 @@ for (const [index, rawLine] of guide.split(/\r?\n/).entries()) {
 
 	const startsFence = marker && (marker[0] === '~' || !rest.includes('`'));
 	const heading = /^ {0,3}#{1,6}(?:[ \t]|$)/.test(line);
-	if (!line.trim() || quoteDepth !== paragraphQuoteDepth || startsFence || heading) {
+	// A hyphen underline takes precedence over a thematic break only when it
+	// completes a paragraph in the same container as a Setext heading.
+	const endsSetextHeading = paragraph.length > 0 && quoteDepth === paragraphQuoteDepth && setextUnderline.test(line);
+	const endsProse = endsSetextHeading || thematicBreak.test(line);
+	if (!line.trim() || quoteDepth !== paragraphQuoteDepth || startsFence || heading || endsProse) {
 		checkParagraph();
 	}
 	if (inComment) {
@@ -116,6 +122,8 @@ for (const [index, rawLine] of guide.split(/\r?\n/).entries()) {
 		line = line.slice(end + 3);
 	} else if (startsFence) {
 		fence = { marker, quoteDepth };
+		continue;
+	} else if (endsProse) {
 		continue;
 	}
 	if (!line.trim()) {
