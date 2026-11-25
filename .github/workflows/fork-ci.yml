@@ -38,6 +38,7 @@ jobs:
       - name: Run build-script smoke tests
         run: |
           timeout --kill-after=5s 60s node --test \
+            build/lib/test/checkAgentsLinks.test.ts \
             build/lib/test/pnpm.test.ts \
             build/lib/test/extensionTarget.test.ts \
             build/lib/test/runWithTimeout.test.ts
